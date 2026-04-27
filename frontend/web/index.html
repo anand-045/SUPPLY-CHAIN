@@ -42,5 +42,10 @@
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
   <script src="flutter_bootstrap.js" async></script>
+  <!-- Google Maps JavaScript API is loaded by flutter_bootstrap.js BEFORE
+       Flutter initialises, so google_maps_flutter_web finds window.google.maps
+       already present. Set GOOGLE_MAPS_API_KEY on the backend (Backend/main.py)
+       and the key is fetched from /api/maps-key at bootstrap time.
+       Required Google Cloud APIs: Maps JavaScript API, Directions API, Places API. -->
 </body>
 </html>

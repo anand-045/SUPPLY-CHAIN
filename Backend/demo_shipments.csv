@@ -1,72 +1,72 @@
 shipment_id,origin,destination,distance_km,cargo_type,vehicle_type,departure_time,status
-SHP009,Chennai,Mumbai,1330,electronics,truck,2024-01-16 06:15,in_transit
-SHP010,Delhi,Kolkata,1500,food,van,2024-01-16 07:30,delayed
-SHP011,Bangalore,Delhi,2100,medicine,truck,2024-01-16 09:00,in_transit
-SHP012,Mumbai,Hyderabad,710,clothing,truck,2024-01-16 10:45,delivered
-SHP013,Kolkata,Chennai,1700,electronics,truck,2024-01-16 05:20,in_transit
-SHP014,Hyderabad,Bangalore,570,food,van,2024-01-16 06:50,delayed
-SHP015,Delhi,Mumbai,1400,clothing,truck,2024-01-16 08:10,in_transit
-SHP016,Chennai,Delhi,2200,medicine,truck,2024-01-16 09:40,in_transit
-SHP017,Bangalore,Kolkata,1800,electronics,truck,2024-01-16 11:00,delivered
-SHP018,Mumbai,Chennai,1330,food,van,2024-01-16 12:20,in_transit
-SHP019,Hyderabad,Delhi,1550,clothing,truck,2024-01-16 07:10,in_transit
-SHP020,Kolkata,Mumbai,1960,medicine,truck,2024-01-16 06:30,delayed
-SHP021,Delhi,Bangalore,2100,electronics,truck,2024-01-16 08:45,in_transit
-SHP022,Chennai,Kolkata,1700,food,van,2024-01-16 10:15,delivered
-SHP023,Bangalore,Hyderabad,570,medicine,truck,2024-01-16 05:50,in_transit
-SHP024,Mumbai,Delhi,1400,clothing,truck,2024-01-16 07:25,in_transit
-SHP025,Kolkata,Chennai,1700,electronics,truck,2024-01-16 09:10,delayed
-SHP026,Hyderabad,Mumbai,710,food,van,2024-01-16 11:35,in_transit
-SHP027,Delhi,Chennai,2200,medicine,truck,2024-01-16 06:05,in_transit
-SHP028,Chennai,Bangalore,350,clothing,van,2024-01-16 08:20,delivered
-SHP029,Bangalore,Delhi,2100,electronics,truck,2024-01-16 09:55,in_transit
-SHP030,Mumbai,Kolkata,1960,food,van,2024-01-16 12:40,delayed
-SHP031,Kolkata,Delhi,1500,medicine,truck,2024-01-16 05:10,in_transit
-SHP032,Hyderabad,Chennai,630,clothing,truck,2024-01-16 07:00,in_transit
-SHP033,Delhi,Mumbai,1400,electronics,truck,2024-01-16 08:30,delivered
-SHP034,Chennai,Kolkata,1700,food,van,2024-01-16 10:50,in_transit
-SHP035,Bangalore,Hyderabad,570,medicine,truck,2024-01-16 06:40,in_transit
-SHP036,Mumbai,Delhi,1400,clothing,truck,2024-01-16 09:20,delayed
-SHP037,Kolkata,Mumbai,1960,electronics,truck,2024-01-16 11:15,in_transit
-SHP038,Hyderabad,Bangalore,570,food,van,2024-01-16 12:05,delivered
-SHP039,Delhi,Chennai,2200,medicine,truck,2024-01-16 07:55,in_transit
-SHP040,Chennai,Mumbai,1330,clothing,truck,2024-01-16 09:35,in_transit
-SHP041,Bangalore,Kolkata,1800,electronics,truck,2024-01-16 10:25,delayed
-SHP042,Mumbai,Hyderabad,710,food,van,2024-01-16 06:15,in_transit
-SHP043,Kolkata,Delhi,1500,medicine,truck,2024-01-16 07:45,in_transit
-SHP044,Hyderabad,Mumbai,710,clothing,truck,2024-01-16 08:55,delivered
-SHP045,Delhi,Bangalore,2100,electronics,truck,2024-01-16 10:10,in_transit
-SHP046,Chennai,Kolkata,1700,food,van,2024-01-16 11:50,in_transit
-SHP047,Bangalore,Hyderabad,570,medicine,truck,2024-01-16 05:25,delayed
-SHP048,Mumbai,Delhi,1400,clothing,truck,2024-01-16 07:15,in_transit
-SHP049,Kolkata,Chennai,1700,electronics,truck,2024-01-16 09:45,in_transit
-SHP050,Hyderabad,Chennai,630,food,van,2024-01-16 11:05,delivered
-SHP051,Delhi,Mumbai,1400,medicine,truck,2024-01-16 06:35,in_transit
-SHP052,Chennai,Delhi,2200,clothing,truck,2024-01-16 08:25,in_transit
-SHP053,Bangalore,Kolkata,1800,electronics,truck,2024-01-16 10:55,delayed
-SHP054,Mumbai,Hyderabad,710,food,van,2024-01-16 12:10,in_transit
-SHP055,Kolkata,Delhi,1500,medicine,truck,2024-01-16 05:45,in_transit
-SHP056,Hyderabad,Bangalore,570,clothing,truck,2024-01-16 07:20,in_transit
-
-
-
-
-	SHP0057,	Mumbai,	Delhi,	1400,	medicine,	truck,	2024-01-15 06:00,	in_transit
-	SHP0058	,London,	Paris,	450	,electronics,	truck,	2024-01-15 08:00,	in_transit
-	SHP0059,	New York	,Chicago,	1270,	food,	van,	2024-01-15 09:30	,in_transit
-	SHP0060	,Tokyo,	Seoul	,1200	,electronics	,truck	,2024-01-15 07:00	,in_transit
-	SHP0061,	Dubai,	Riyadh,	950	,clothing	,truck	,2024-01-15 10:00,	in_transit
-	SHP0062,	Singapore,	Bangkok	,1500,	medicine,	truck	,2024-01-15 05:30	,in_transit
-	SHP0063	,Berlin	,Warsaw,	580,	food,	van	2024-01-15 11:00,	in_transit
-	SHP0064,	Chennai	Kolkata	,1700,	clothing	,truck,	2024-01-15 06:30,	in_transit
-	SHP0065,	Sydney,	Melbourne,	880	,electronics	,truck	,2024-01-15 14:00	,in_transit
-	SHP0066,	São Paulo,	Buenos Aires,	2200	,food,	truck	,2024-01-15 08:30	,in_transit
-	SHP0067,	Bangalore,	Delhi	,2100,	medicine,	truck	,2024-01-15 05:00	,in_transit
-	SHP0068,	Los Angeles	,Houston	,2500	,electronics,	truck	,2024-01-15 06:00	,in_transit
-	SHP0069	,Kolkata	,Chennai	,1700	,food	,truck	,2024-01-15 07:30	,in_transit
-SHP0070	,Amsterdam,	Brussels	,210	,clothing,	van	,2024-01-15 09:00,	in_transit
-	SHP0071 ,Cairo	,Nairobi	,3800	,medicine	,truck	,2024-01-15 04:00,	in_transit
-	SHP0072	,Chennai	,Delhi	,2200	,electronics	,truck	,2024-01-15 05:30,	in_transit
-SHP0073	,Bangalore	,Kolkata	,1870	,food	,truck,	2024-01-15 06:00	,in_transit
-	SHP0074	,Toronto	,Vancouver,	4400	,clothing	,truck	,2024-01-15 07:00	,in_transit
-SHP0075,	Kuala Lumpur	,Jakarta	,1180	,electronics,	truck,	2024-01-15 08:00,	in_transit
+SHP009,Chennai,Mumbai,1330,electronics,truck,16-01-2024 06:15,in_transit
+SHP010,Delhi,Kolkata,1500,food,van,16-01-2024 07:30,delayed
+SHP011,Bangalore,Delhi,2100,medicine,truck,16-01-2024 09:00,in_transit
+SHP012,Mumbai,Hyderabad,710,clothing,truck,16-01-2024 10:45,delivered
+SHP013,Kolkata,Chennai,1700,electronics,truck,16-01-2024 05:20,in_transit
+SHP014,Hyderabad,Bangalore,570,food,van,16-01-2024 06:50,delayed
+SHP015,Delhi,Mumbai,1400,clothing,truck,16-01-2024 08:10,in_transit
+SHP016,Chennai,Delhi,2200,medicine,truck,16-01-2024 09:40,in_transit
+SHP017,Bangalore,Kolkata,1800,electronics,truck,16-01-2024 11:00,delivered
+SHP018,Mumbai,Chennai,1330,food,van,16-01-2024 12:20,in_transit
+SHP019,Hyderabad,Delhi,1550,clothing,truck,16-01-2024 07:10,in_transit
+SHP020,Kolkata,Mumbai,1960,medicine,truck,16-01-2024 06:30,delayed
+SHP021,Delhi,Bangalore,2100,electronics,truck,16-01-2024 08:45,in_transit
+SHP022,Chennai,Kolkata,1700,food,van,16-01-2024 10:15,delivered
+SHP023,Bangalore,Hyderabad,570,medicine,truck,16-01-2024 05:50,in_transit
+SHP024,Mumbai,Delhi,1400,clothing,truck,16-01-2024 07:25,in_transit
+SHP025,Kolkata,Chennai,1700,electronics,truck,16-01-2024 09:10,delayed
+SHP026,Hyderabad,Mumbai,710,food,van,16-01-2024 11:35,in_transit
+SHP027,Delhi,Chennai,2200,medicine,truck,16-01-2024 06:05,in_transit
+SHP028,Chennai,Bangalore,350,clothing,van,16-01-2024 08:20,delivered
+SHP029,Bangalore,Delhi,2100,electronics,truck,16-01-2024 09:55,in_transit
+SHP030,Mumbai,Kolkata,1960,food,van,16-01-2024 12:40,delayed
+SHP031,Kolkata,Delhi,1500,medicine,truck,16-01-2024 05:10,in_transit
+SHP032,Hyderabad,Chennai,630,clothing,truck,16-01-2024 07:00,in_transit
+SHP033,Delhi,Mumbai,1400,electronics,truck,16-01-2024 08:30,delivered
+SHP034,Chennai,Kolkata,1700,food,van,16-01-2024 10:50,in_transit
+SHP035,Bangalore,Hyderabad,570,medicine,truck,16-01-2024 06:40,in_transit
+SHP036,Mumbai,Delhi,1400,clothing,truck,16-01-2024 09:20,delayed
+SHP037,Kolkata,Mumbai,1960,electronics,truck,16-01-2024 11:15,in_transit
+SHP038,Hyderabad,Bangalore,570,food,van,16-01-2024 12:05,delivered
+SHP039,Delhi,Chennai,2200,medicine,truck,16-01-2024 07:55,in_transit
+SHP040,Chennai,Mumbai,1330,clothing,truck,16-01-2024 09:35,in_transit
+SHP041,Bangalore,Kolkata,1800,electronics,truck,16-01-2024 10:25,delayed
+SHP042,Mumbai,Hyderabad,710,food,van,16-01-2024 06:15,in_transit
+SHP043,Kolkata,Delhi,1500,medicine,truck,16-01-2024 07:45,in_transit
+SHP044,Hyderabad,Mumbai,710,clothing,truck,16-01-2024 08:55,delivered
+SHP045,Delhi,Bangalore,2100,electronics,truck,16-01-2024 10:10,in_transit
+SHP046,Chennai,Kolkata,1700,food,van,16-01-2024 11:50,in_transit
+SHP047,Bangalore,Hyderabad,570,medicine,truck,16-01-2024 05:25,delayed
+SHP048,Mumbai,Delhi,1400,clothing,truck,16-01-2024 07:15,in_transit
+SHP049,Kolkata,Chennai,1700,electronics,truck,16-01-2024 09:45,in_transit
+SHP050,Hyderabad,Chennai,630,food,van,16-01-2024 11:05,delivered
+SHP051,Delhi,Mumbai,1400,medicine,truck,16-01-2024 06:35,in_transit
+SHP052,Chennai,Delhi,2200,clothing,truck,16-01-2024 08:25,in_transit
+SHP053,Bangalore,Kolkata,1800,electronics,truck,16-01-2024 10:55,delayed
+SHP054,Mumbai,Hyderabad,710,food,van,16-01-2024 12:10,in_transit
+SHP055,Kolkata,Delhi,1500,medicine,truck,16-01-2024 05:45,in_transit
+SHP056,Hyderabad,Bangalore,570,clothing,truck,16-01-2024 07:20,in_transit
+,,,,,,,
+,,,,,,,
+,,,,,,,
+,,,,,,,
+"	SHP0057","	Mumbai","	Delhi","	1400","	medicine","	truck","	2024-01-15 06:00","	in_transit"
+"	SHP0058	",London,"	Paris","	450	",electronics,"	truck","	2024-01-15 08:00","	in_transit"
+"	SHP0059","	New York	",Chicago,"	1270","	food","	van","	2024-01-15 09:30	",in_transit
+"	SHP0060	",Tokyo,"	Seoul	","1200	","electronics	","truck	","2024-01-15 07:00	",in_transit
+"	SHP0061","	Dubai","	Riyadh","	950	","clothing	","truck	",15-01-2024 10:00,"	in_transit"
+"	SHP0062","	Singapore","	Bangkok	",1500,"	medicine","	truck	","2024-01-15 05:30	",in_transit
+"	SHP0063	","Berlin	",Warsaw,"	580","	food","	van	2024-01-15 11:00","	in_transit",
+"	SHP0064","	Chennai	Kolkata	",1700,"	clothing	",truck,"	2024-01-15 06:30","	in_transit",
+"	SHP0065","	Sydney","	Melbourne","	880	","electronics	","truck	","2024-01-15 14:00	",in_transit
+"	SHP0066","	São Paulo","	Buenos Aires","	2200	",food,"	truck	","2024-01-15 08:30	",in_transit
+"	SHP0067","	Bangalore","	Delhi	",2100,"	medicine","	truck	","2024-01-15 05:00	",in_transit
+"	SHP0068","	Los Angeles	","Houston	","2500	",electronics,"	truck	","2024-01-15 06:00	",in_transit
+"	SHP0069	","Kolkata	","Chennai	","1700	","food	","truck	","2024-01-15 07:30	",in_transit
+"SHP0070	",Amsterdam,"	Brussels	","210	",clothing,"	van	",15-01-2024 09:00,"	in_transit"
+"	SHP0071 ","Cairo	","Nairobi	","3800	","medicine	","truck	",15-01-2024 04:00,"	in_transit"
+"	SHP0072	","Chennai	","Delhi	","2200	","electronics	","truck	",15-01-2024 05:30,"	in_transit"
+"SHP0073	","Bangalore	","Kolkata	","1870	","food	",truck,"	2024-01-15 06:00	",in_transit
+"	SHP0074	","Toronto	",Vancouver,"	4400	","clothing	","truck	","2024-01-15 07:00	",in_transit
+SHP0075,"	Kuala Lumpur	","Jakarta	","1180	",electronics,"	truck","	2024-01-15 08:00","	in_transit"

@@ -1,12 +1,23 @@
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:url_launcher/url_launcher.dart';
- 
+import 'map_screen.dart';
+
 // ─────────────────────────────────────────────
 // CONSTANTS
 // ─────────────────────────────────────────────
-const String kBaseUrl   = "http://127.0.0.1:8000";
+String getBaseUrl() {
+  // Android emulator routes 127.0.0.1 to itself; host machine is at 10.0.2.2
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+    return "http://10.0.2.2:8000";
+  }
+  return "http://127.0.0.1:8000";
+}
+
+const String kBaseUrl = "http://127.0.0.1:8000";
 const Color  kPrimary   = Color(0xFF0A1628);
 const Color  kAccent    = Color(0xFF00D4AA);
 const Color  kCard      = Color(0xFF0F2040);
@@ -14,6 +25,11 @@ const Color  kSurface   = Color(0xFF142848);
 const Color  kCritical  = Color(0xFFFF4757);
 const Color  kWarning   = Color(0xFFFFB300);
 const Color  kSafe      = Color(0xFF00D4AA);
+
+const List<String> kRequiredCsvColumns = [
+  "shipment_id", "origin", "destination", "distance_km",
+  "cargo_type", "vehicle_type", "status",
+];
  
 // ─────────────────────────────────────────────
 // MAIN APP
@@ -51,7 +67,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen>
     with TickerProviderStateMixin {
  
-  final Dio _dio = Dio();
+  late Dio _dio;
   bool   isLoading  = false;
   String statusMsg  = "";
   int    currentStep = 0;
@@ -60,6 +76,13 @@ class _DashboardScreenState extends State<DashboardScreen>
   List shipments = [];
   List alerts    = [];
   Map  summary   = {};
+
+  String _searchQuery = '';
+  String _filterFlag  = 'All';
+  String _sortMode    = 'risk_desc';
+  final TextEditingController _searchCtrl = TextEditingController();
+  Map<String, Map> _routeCache   = {};
+  Map<String, Map> _predictions  = {};
  
   late AnimationController _pulseCtrl;
   late AnimationController _fadeCtrl;
@@ -68,17 +91,27 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   void initState() {
     super.initState();
+    final baseUrl = getBaseUrl();
+    debugPrint('[Network] Base URL: $baseUrl');
+    _dio = Dio(BaseOptions(
+      baseUrl: baseUrl,
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 120),
+      sendTimeout: const Duration(seconds: 60),
+    ));
     _pulseCtrl = AnimationController(
       vsync: this, duration: const Duration(seconds: 2))..repeat(reverse: true);
     _fadeCtrl  = AnimationController(
       vsync: this, duration: const Duration(milliseconds: 800));
     _fadeAnim  = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeIn);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkBackendConnection());
   }
  
   @override
   void dispose() {
     _pulseCtrl.dispose();
     _fadeCtrl.dispose();
+    _searchCtrl.dispose();
     super.dispose();
   }
  
@@ -93,7 +126,237 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (flag == "Warning")  return Icons.warning_amber_rounded;
     return Icons.check_circle_rounded;
   }
- 
+
+  // ── CSV validation helpers ───────────────────
+  List<String> _parseCsvHeaders(Uint8List bytes) {
+    final content = utf8.decode(bytes, allowMalformed: true);
+    final firstLine = content.split('\n').first.trim();
+    final clean = firstLine.startsWith('﻿') ? firstLine.substring(1) : firstLine;
+    return clean.split(',').map((h) => h.trim().toLowerCase()).toList();
+  }
+
+  List<String>? _validateCsvColumns(Uint8List bytes) {
+    final headers = _parseCsvHeaders(bytes);
+    final missing = kRequiredCsvColumns.where((col) => !headers.contains(col)).toList();
+    return missing.isEmpty ? null : missing;
+  }
+
+  int _parseHour(String departureTime) {
+    if (departureTime.isEmpty) return 12;
+    try {
+      return DateTime.parse(departureTime.replaceAll(' ', 'T')).hour;
+    } catch (_) {}
+    try {
+      final timePart = departureTime.split(' ').last;
+      return int.parse(timePart.split(':').first);
+    } catch (_) {}
+    return 12;
+  }
+
+  // ── Total cost savings across all optimized routes ──
+  double get _totalSavings {
+    double savings = 0;
+    for (final a in alerts) {
+      final orig = (a['original_cost'] as Map?)?['total_cost'];
+      final alt  = (a['alt_cost']      as Map?)?['total_cost'];
+      if (orig != null && alt != null) {
+        final diff = (orig as num).toDouble() - (alt as num).toDouble();
+        if (diff > 0) savings += diff;
+      }
+    }
+    return savings;
+  }
+
+  String get _savingsCurrency {
+    if (alerts.isEmpty) return 'USD';
+    return (alerts.first['original_cost'] as Map?)?['currency'] as String? ?? 'USD';
+  }
+
+  // ── Computed filtered/sorted shipments ───────
+  List get _filteredShipments {
+    var result = List.from(shipments);
+    if (_searchQuery.isNotEmpty) {
+      final q = _searchQuery.toLowerCase();
+      result = result.where((s) =>
+        (s['shipment_id'] ?? '').toLowerCase().contains(q) ||
+        (s['route']       ?? '').toLowerCase().contains(q) ||
+        (s['cargo_type']  ?? '').toLowerCase().contains(q)
+      ).toList();
+    }
+    if (_filterFlag != 'All') {
+      result = result.where((s) => s['flag'] == _filterFlag).toList();
+    }
+    result.sort((a, b) {
+      switch (_sortMode) {
+        case 'risk_asc':      return (a['risk_score'] ?? 0).compareTo(b['risk_score'] ?? 0);
+        case 'distance_desc': return (b['distance_km'] ?? 0).compareTo(a['distance_km'] ?? 0);
+        case 'id_asc':        return (a['shipment_id'] ?? '').compareTo(b['shipment_id'] ?? '');
+        default:              return (b['risk_score'] ?? 0).compareTo(a['risk_score'] ?? 0);
+      }
+    });
+    return result;
+  }
+
+  // ── Error / info dialogs ─────────────────────
+  void _showErrorDialog(String title, String message, {bool showRetry = false}) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kCard,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: kCritical.withOpacity(0.4)),
+        ),
+        title: Row(children: [
+          const Icon(Icons.error_rounded, color: kCritical, size: 22),
+          const SizedBox(width: 10),
+          Expanded(child: Text(title,
+              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold))),
+        ]),
+        content: Text(message,
+            style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 14, height: 1.5)),
+        actions: [
+          if (showRetry)
+            TextButton(
+              onPressed: () { Navigator.of(ctx).pop(); runFullAnalysis(); },
+              child: const Text("Retry",
+                  style: TextStyle(color: kAccent, fontWeight: FontWeight.bold)),
+            ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text("Dismiss",
+                style: TextStyle(color: Colors.white.withOpacity(0.5))),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showColumnErrorDialog(List<String> missingColumns) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kCard,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: kWarning.withOpacity(0.4)),
+        ),
+        title: Row(children: [
+          const Icon(Icons.table_chart_rounded, color: kWarning, size: 22),
+          const SizedBox(width: 10),
+          const Text("Invalid CSV Format",
+              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+        ]),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("Missing ${missingColumns.length} required column(s):",
+                style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 13)),
+            const SizedBox(height: 10),
+            ...missingColumns.map((col) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(children: [
+                const Icon(Icons.close, color: kCritical, size: 16),
+                const SizedBox(width: 8),
+                Text(col, style: const TextStyle(
+                    color: kCritical, fontSize: 13, fontFamily: 'monospace')),
+              ]),
+            )),
+            const SizedBox(height: 10),
+            Text("Required: ${kRequiredCsvColumns.join(', ')}",
+                style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.4))),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () { Navigator.of(ctx).pop(); _showSampleCsvDialog(); },
+            child: const Text("Download Sample",
+                style: TextStyle(color: kAccent, fontWeight: FontWeight.bold)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text("OK", style: TextStyle(color: Colors.white.withOpacity(0.5))),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static const String _sampleCsv =
+      "shipment_id,origin,destination,distance_km,cargo_type,vehicle_type,status\n"
+      "SHP001,Mumbai,Delhi,1400,electronics,truck,in_transit\n"
+      "SHP002,London,Paris,340,medicine,van,pending\n"
+      "SHP003,New York,Chicago,1270,food,truck,in_transit\n"
+      "SHP004,Tokyo,Shanghai,1765,clothing,truck,delayed\n"
+      "SHP005,Dubai,Riyadh,970,electronics,truck,in_transit\n";
+
+  void _showSampleCsvDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(children: [
+          const Icon(Icons.download_rounded, color: kAccent, size: 20),
+          const SizedBox(width: 8),
+          const Text("Sample CSV Template",
+              style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+        ]),
+        content: SingleChildScrollView(
+          child: SelectableText(
+            _sampleCsv,
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: kAccent),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text("Close", style: TextStyle(color: kAccent)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Backend connectivity probe ───────────────
+  Future<void> _checkBackendConnection() async {
+    final primary   = _dio.options.baseUrl;
+    final fallback  = primary.contains('10.0.2.2')
+        ? "http://127.0.0.1:8000"
+        : "http://10.0.2.2:8000";
+
+    debugPrint('[Network] Probing $primary ...');
+    try {
+      await Dio(BaseOptions(
+        baseUrl: primary,
+        connectTimeout: const Duration(seconds: 5),
+      )).get("/");
+      debugPrint('[Network] $primary reachable');
+    } on DioException catch (e) {
+      debugPrint('[Network] $primary unreachable (${e.type}) — trying $fallback');
+      try {
+        await Dio(BaseOptions(
+          baseUrl: fallback,
+          connectTimeout: const Duration(seconds: 5),
+        )).get("/");
+        debugPrint('[Network] Fallback $fallback reachable — switching');
+        _dio.options.baseUrl = fallback;
+      } on DioException {
+        debugPrint('[Network] Both URLs unreachable');
+        if (mounted) {
+          _showErrorDialog(
+            "Backend Not Running",
+            "Could not reach the server at:\n$primary\n\n"
+            "Start the backend with:\nuvicorn Backend.main:app --host 0.0.0.0 --port 8000\n\n"
+            "Then tap Retry or restart the app.",
+            showRetry: false,
+          );
+        }
+      }
+    }
+  }
+
   // ── Run all layers ───────────────────────────
   Future<void> runFullAnalysis() async {
     FilePickerResult? picked = await FilePicker.platform.pickFiles(
@@ -105,51 +368,151 @@ class _DashboardScreenState extends State<DashboardScreen>
  
     PlatformFile file = picked.files.single;
     if (file.bytes == null) return;
- 
+
+    final missingCols = _validateCsvColumns(file.bytes!);
+    if (missingCols != null) {
+      _showColumnErrorDialog(missingCols);
+      return;
+    }
+
     setState(() {
-      isLoading  = true;
-      currentStep = 0;
-      shipments  = [];
-      alerts     = [];
-      summary    = {};
-      statusMsg  = "Initializing analysis pipeline...";
+      isLoading    = true;
+      currentStep  = 0;
+      shipments    = [];
+      alerts       = [];
+      summary      = {};
+      statusMsg    = "Initializing analysis pipeline...";
+      _searchQuery = '';
+      _filterFlag  = 'All';
+      _sortMode    = 'risk_desc';
+      _routeCache  = {};
+      _predictions = {};
     });
+    _searchCtrl.clear();
  
     try {
+      debugPrint('[Network] POST ${_dio.options.baseUrl}/ingest/upload');
       // Layer 0
       setState(() { statusMsg = "Layer 0 — Ingesting shipment data..."; currentStep = 1; });
       FormData formData = FormData.fromMap({
         "file": MultipartFile.fromBytes(file.bytes!, filename: file.name),
       });
-      await _dio.post("$kBaseUrl/ingest/upload", data: formData);
- 
+      await _dio.post("/ingest/upload", data: formData);
+
       // Layer 1
       setState(() { statusMsg = "Layer 1 — Detecting weather disruptions..."; currentStep = 2; });
-      await _dio.post("$kBaseUrl/detect/disruptions");
- 
+      await _dio.post("/detect/disruptions");
+
       // Layer 3
       setState(() { statusMsg = "Layer 3 — Running ML risk model..."; currentStep = 3; });
-      final l3 = await _dio.post("$kBaseUrl/risk/score");
- 
+      final l3 = await _dio.post("/risk/score");
+
       // Layer 4
       setState(() { statusMsg = "Layer 4 — Generating AI alerts..."; currentStep = 4; });
-      final l4 = await _dio.post("$kBaseUrl/alerts/generate");
+      final l4 = await _dio.post("/alerts/generate");
  
+      final loadedAlerts    = (l4.data['alerts']    as List? ?? []);
+      final loadedShipments = (l3.data['shipments'] as List? ?? []);
+
       setState(() {
-        isLoading   = false;
-        statusMsg   = "Analysis complete — ${(l3.data['shipments'] as List).length} shipments processed";
-        shipments   = l3.data['shipments'] ?? [];
-        alerts      = l4.data['alerts']    ?? [];
-        summary     = l3.data['summary']   ?? {};
+        shipments   = loadedShipments;
+        alerts      = loadedAlerts;
+        summary     = l3.data['summary'] ?? {};
         currentStep = 5;
+        statusMsg   = "Layer 5 — Optimizing routes for at-risk shipments...";
+      });
+
+      // Layer 5: route optimisation (at-risk) + ML delay prediction (all) — run concurrently
+      final atRisk = loadedAlerts
+          .where((a) => a['flag'] == 'Critical' || a['flag'] == 'Warning')
+          .toList();
+
+      final routeFutures = atRisk.map((alert) async {
+        try {
+          final res = await _dio.post(
+            "/route/optimize",
+            queryParameters: {
+              "shipment_id": alert['shipment_id'],
+              "origin":      alert['origin']      ?? '',
+              "destination": alert['destination'] ?? '',
+            },
+          );
+          return MapEntry(alert['shipment_id'] as String, res.data as Map);
+        } catch (_) { return null; }
+      }).toList();
+
+      final predFutures = loadedShipments.map((s) async {
+        try {
+          final res = await _dio.post("/predict", data: {
+            "distance_km":   s['distance_km'] ?? 500,
+            "traffic_level": 0.5,
+            "weather":       "clear",
+            "cargo_weight":  1000,
+            "hour":          _parseHour(s['departure_time']?.toString() ?? ''),
+            "cargo_type":    s['cargo_type'] ?? 'general',
+          });
+          return MapEntry(s['shipment_id'] as String, res.data as Map);
+        } catch (_) { return null; }
+      }).toList();
+
+      final combined = await Future.wait([
+        Future.wait(routeFutures),
+        Future.wait(predFutures),
+      ]);
+
+      final routeResults = combined[0] as List;
+      final predResults  = combined[1] as List;
+
+      final routeCache = <String, Map>{};
+      for (final e in routeResults) {
+        if (e != null) routeCache[(e as MapEntry).key] = e.value as Map;
+      }
+      final predCache = <String, Map>{};
+      for (final e in predResults) {
+        if (e != null) predCache[(e as MapEntry).key] = e.value as Map;
+      }
+
+      setState(() {
+        _routeCache  = routeCache;
+        _predictions = predCache;
+        isLoading    = false;
+        statusMsg    = "Analysis complete — ${loadedShipments.length} shipments processed, "
+                       "${atRisk.length} routes optimized, ${predCache.length} predictions loaded";
+        currentStep  = 6;
       });
       _fadeCtrl.forward(from: 0);
  
     } catch (e) {
-      setState(() {
-        isLoading = false;
-        statusMsg = "Error: ${e.toString()}";
-      });
+      setState(() { isLoading = false; statusMsg = ""; });
+
+      String title = "Upload Failed";
+      String message;
+
+      if (e is DioException) {
+        if (e.type == DioExceptionType.connectionTimeout ||
+            e.type == DioExceptionType.sendTimeout) {
+          title = "Connection Timeout";
+          message = "Could not reach the server. Make sure the backend is running at ${_dio.options.baseUrl}.";
+        } else if (e.type == DioExceptionType.receiveTimeout) {
+          title = "Server Timeout";
+          message = "The server took too long to respond. Try again in a moment.";
+        } else if (e.response?.statusCode == 400) {
+          final detail = e.response?.data is Map
+              ? e.response!.data['detail'] ?? "Invalid request"
+              : e.response?.data?.toString() ?? "Invalid request";
+          title = "Validation Error";
+          message = "The server rejected the upload:\n\n$detail";
+        } else if (e.type == DioExceptionType.connectionError) {
+          title = "Server Unreachable";
+          message = "Cannot connect to ${_dio.options.baseUrl}.\n\nStart the backend with:\npython Backend/main.py";
+        } else {
+          message = "A network error occurred. Please try again.";
+        }
+      } else {
+        message = "An unexpected error occurred:\n\n${e.toString()}";
+      }
+
+      _showErrorDialog(title, message, showRetry: true);
     }
   }
  
@@ -165,7 +528,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       builder: (_) => RouteDetailSheet(
         alert: alert,
         dio: _dio,
-        baseUrl: kBaseUrl,
+        baseUrl: _dio.options.baseUrl,
       ),
     );
   }
@@ -304,7 +667,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
  
   Widget _buildProgressBar() {
-    final steps = ["Upload", "Weather", "ML Model", "AI Alerts", "Done"];
+    final steps = ["Upload", "Weather", "ML Model", "AI Alerts", "Routes", "Done"];
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(
         children: List.generate(steps.length, (i) {
@@ -390,6 +753,23 @@ class _DashboardScreenState extends State<DashboardScreen>
               ]),
             ),
           ),
+          const SizedBox(height: 14),
+          GestureDetector(
+            onTap: _showSampleCsvDialog,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: kAccent.withOpacity(0.4)),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.download_rounded, color: kAccent.withOpacity(0.7), size: 15),
+                const SizedBox(width: 8),
+                Text("Download Sample CSV",
+                    style: TextStyle(color: kAccent.withOpacity(0.7), fontSize: 13)),
+              ]),
+            ),
+          ),
         ],
       ),
     );
@@ -438,7 +818,12 @@ class _DashboardScreenState extends State<DashboardScreen>
     final critical = summary['critical'] ?? 0;
     final warning  = summary['warning']  ?? 0;
     final safe     = summary['safe']     ?? 0;
- 
+    final savings  = _totalSavings;
+    final currency = _savingsCurrency;
+    final savingsStr = savings >= 1000
+        ? "${currency} ${(savings / 1000).toStringAsFixed(1)}K"
+        : "${currency} ${savings.toStringAsFixed(0)}";
+
     return Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(16),
@@ -456,10 +841,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         _divider(),
         _statBlock("$safe",     "Safe",     kSafe),
         _divider(),
-        _statBlock(
-          "${critical > 0 ? ((critical / total) * 100).toStringAsFixed(0) : 0}%",
-          "At Risk", kCritical,
-        ),
+        _statBlock(savings > 0 ? savingsStr : "—", "Saved", kAccent),
       ]),
     );
   }
@@ -550,9 +932,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
  
   Widget _buildAlertCard(Map alert) {
-    final color = flagColor(alert['flag'] ?? 'Safe');
-    final origCost = alert['original_cost'] as Map? ?? {};
-    final altCost  = alert['alt_cost']      as Map? ?? {};
+    final color     = flagColor(alert['flag'] ?? 'Safe');
+    final origCost  = alert['original_cost'] as Map? ?? {};
+    final altCost   = alert['alt_cost']      as Map? ?? {};
+    final routeData = _routeCache[alert['shipment_id'] as String? ?? ''];
  
     return GestureDetector(
       onTap: () => _openRouteSheet(alert),
@@ -605,6 +988,23 @@ class _DashboardScreenState extends State<DashboardScreen>
                   const SizedBox(height: 4),
                   Text("${alert['risk_score'] ?? 0}/100",
                       style: TextStyle(fontSize: 11, color: color.withOpacity(0.7))),
+                  if (routeData != null) ...[
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: kAccent.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: kAccent.withOpacity(0.4)),
+                      ),
+                      child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.alt_route_rounded, size: 10, color: kAccent),
+                        SizedBox(width: 4),
+                        Text("AI-Rerouted",
+                            style: TextStyle(color: kAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                      ]),
+                    ),
+                  ],
                 ]),
               ]),
             ),
@@ -615,9 +1015,15 @@ class _DashboardScreenState extends State<DashboardScreen>
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(alert['alert'] ?? '',
                     style: const TextStyle(fontSize: 13, color: Colors.white, height: 1.5)),
- 
+
+                // ML prediction row
+                if (_predictions.containsKey(alert['shipment_id'])) ...[
+                  const SizedBox(height: 10),
+                  _buildAlertPredictionRow(alert['shipment_id'] as String),
+                ],
+
                 const SizedBox(height: 12),
- 
+
                 // Cost comparison row
                 if (origCost.isNotEmpty) Row(children: [
                   Expanded(child: _costMini(
@@ -633,11 +1039,17 @@ class _DashboardScreenState extends State<DashboardScreen>
                   )),
                 ]),
  
+                // Inline route optimisation result
+                if (routeData != null) ...[
+                  const SizedBox(height: 10),
+                  _buildInlineRoutePanel(routeData),
+                ],
+
                 const SizedBox(height: 10),
- 
+
                 // Tap hint
                 Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                  Text("Tap to view route details",
+                  Text("Tap to view full details",
                       style: TextStyle(fontSize: 11, color: kAccent.withOpacity(0.7))),
                   const SizedBox(width: 4),
                   Icon(Icons.arrow_forward_ios_rounded, size: 10, color: kAccent.withOpacity(0.7)),
@@ -669,12 +1081,297 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
  
+  Widget _buildInlineRoutePanel(Map routeData) {
+    final orig    = routeData['original']    as Map? ?? {};
+    final alt     = routeData['alternative'] as Map? ?? {};
+    final savings = routeData['savings']     as Map? ?? {};
+    final rec     = routeData['recommendation'] as String? ?? '';
+
+    final origKm  = (orig['distance_km'] as num?)?.toStringAsFixed(0) ?? '—';
+    final altKm   = (alt['distance_km']  as num?)?.toStringAsFixed(0) ?? '—';
+    final origHrs = (orig['duration_hr'] as num?)?.toStringAsFixed(1) ?? '—';
+    final altHrs  = (alt['duration_hr']  as num?)?.toStringAsFixed(1) ?? '—';
+
+    final distSaved        = ((orig['distance_km'] as num? ?? 0) - (alt['distance_km'] as num? ?? 0));
+    final delayAvoided     = (savings['delay_avoided_min'] as num?)?.toInt();
+    final co2Saved         = savings['co2_saved_kg'];
+    final currency         = (savings['currency'] as String?) ?? '';
+    final costSaved        = savings['cost'];
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: kAccent.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: kAccent.withValues(alpha: 0.2)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.auto_fix_high_rounded, size: 13, color: kAccent),
+          const SizedBox(width: 6),
+          const Text("AI-Optimized Route",
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: kAccent)),
+          const Spacer(),
+          if (distSaved > 0)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: kSafe.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                "−${distSaved.toStringAsFixed(0)} km"
+                "${delayAvoided != null && delayAvoided > 0 ? '  −${delayAvoided}min delay' : ''}",
+                style: const TextStyle(fontSize: 10, color: kSafe, fontWeight: FontWeight.bold),
+              ),
+            ),
+        ]),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(child: _routeStat("Original", "$origKm km", "$origHrs hrs",
+              Colors.white.withValues(alpha: 0.5))),
+          const SizedBox(width: 8),
+          const Icon(Icons.arrow_forward_rounded, size: 14, color: kAccent),
+          const SizedBox(width: 8),
+          Expanded(child: _routeStat("Best Route", "$altKm km", "$altHrs hrs", kAccent)),
+        ]),
+        if (co2Saved != null || costSaved != null) ...[
+          const SizedBox(height: 8),
+          Wrap(spacing: 12, runSpacing: 4, children: [
+            if (co2Saved != null)
+              _inlineSavingBadge(Icons.eco_rounded, "$co2Saved kg CO₂", kSafe),
+            if (costSaved != null && (costSaved as num) > 0)
+              _inlineSavingBadge(Icons.savings_outlined,
+                  "$currency ${_fmt(costSaved)}", kAccent),
+          ]),
+        ],
+        if (rec.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(rec, style: TextStyle(fontSize: 11,
+              color: Colors.white.withValues(alpha: 0.5), height: 1.4)),
+        ],
+      ]),
+    );
+  }
+
+  Widget _inlineSavingBadge(IconData icon, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 11, color: color),
+        const SizedBox(width: 4),
+        Text(label, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600)),
+      ]),
+    );
+  }
+
+  Widget _routeStat(String label, String dist, String time, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: TextStyle(fontSize: 9, color: color.withOpacity(0.6))),
+        const SizedBox(height: 2),
+        Text(dist, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color)),
+        Text(time, style: TextStyle(fontSize: 10, color: color.withOpacity(0.7))),
+      ]),
+    );
+  }
+
+  // ── ML prediction helpers ────────────────────
+  Widget _buildPredictionBadge(String shipmentId) {
+    final pred = _predictions[shipmentId];
+    if (pred == null) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        Text("—%", style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.3))),
+        Text("delay risk", style: TextStyle(fontSize: 9, color: Colors.white.withOpacity(0.2))),
+      ]);
+    }
+    final prob = ((pred['delay_probability'] as num?) ?? 0).toDouble();
+    final probPct = (prob * 100).toStringAsFixed(0);
+    final level = (pred['risk_level'] as String?) ?? 'low';
+    final levelColor = level == 'high' ? kCritical : level == 'medium' ? kWarning : kSafe;
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+      Text("$probPct%",
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: levelColor)),
+      Text("delay risk", style: TextStyle(fontSize: 9, color: Colors.white.withOpacity(0.25))),
+      const SizedBox(height: 3),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: levelColor.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(level.toUpperCase(),
+            style: TextStyle(fontSize: 8, color: levelColor, fontWeight: FontWeight.bold)),
+      ),
+    ]);
+  }
+
+  Widget _buildAlertPredictionRow(String shipmentId) {
+    final pred = _predictions[shipmentId];
+    if (pred == null) return const SizedBox.shrink();
+    final prob = ((pred['delay_probability'] as num?) ?? 0).toDouble();
+    final probPct = (prob * 100).toStringAsFixed(0);
+    final hours = ((pred['delay_hours'] as num?) ?? 0).toDouble();
+    final level = (pred['risk_level'] as String?) ?? 'low';
+    final levelColor = level == 'high' ? kCritical : level == 'medium' ? kWarning : kSafe;
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: levelColor.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: levelColor.withOpacity(0.2)),
+      ),
+      child: Row(children: [
+        Icon(Icons.psychology_rounded, size: 14, color: levelColor),
+        const SizedBox(width: 8),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text("ML Prediction",
+              style: TextStyle(fontSize: 10, color: Colors.white.withOpacity(0.4))),
+          Text(
+            "$probPct% delay probability  •  +${hours.toStringAsFixed(1)} hrs",
+            style: TextStyle(fontSize: 12, color: levelColor, fontWeight: FontWeight.w600),
+          ),
+        ])),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: levelColor.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(level.toUpperCase(),
+              style: TextStyle(fontSize: 10, color: levelColor, fontWeight: FontWeight.bold)),
+        ),
+      ]),
+    );
+  }
+
   // ── Shipments list ───────────────────────────
   Widget _buildShipmentsList() {
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-      itemCount: shipments.length,
-      itemBuilder: (_, i) => _buildShipmentCard(shipments[i]),
+    final filtered = _filteredShipments;
+    return Column(children: [
+      _buildShipmentsToolbar(),
+      const SizedBox(height: 8),
+      Expanded(
+        child: filtered.isEmpty
+            ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(Icons.search_off_rounded, color: Colors.white.withOpacity(0.2), size: 48),
+                const SizedBox(height: 12),
+                Text("No shipments match your filters",
+                    style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 14)),
+              ]))
+            : ListView.builder(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
+                itemCount: filtered.length,
+                itemBuilder: (_, i) => _buildShipmentCard(filtered[i] as Map),
+              ),
+      ),
+    ]);
+  }
+
+  Widget _buildShipmentsToolbar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Column(children: [
+        Container(
+          decoration: BoxDecoration(
+            color: kCard,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withOpacity(0.1)),
+          ),
+          child: TextField(
+            controller: _searchCtrl,
+            style: const TextStyle(color: Colors.white, fontSize: 14),
+            decoration: InputDecoration(
+              hintText: "Search shipment ID, route, or cargo...",
+              hintStyle: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 13),
+              prefixIcon: Icon(Icons.search_rounded, color: kAccent.withOpacity(0.6), size: 20),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? GestureDetector(
+                      onTap: () => setState(() { _searchCtrl.clear(); _searchQuery = ''; }),
+                      child: Icon(Icons.close_rounded, color: Colors.white.withOpacity(0.4), size: 18),
+                    )
+                  : null,
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+            onChanged: (v) => setState(() => _searchQuery = v),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(children: [
+                _filterChip('All', Colors.white),
+                const SizedBox(width: 6),
+                _filterChip('Critical', kCritical),
+                const SizedBox(width: 6),
+                _filterChip('Warning', kWarning),
+                const SizedBox(width: 6),
+                _filterChip('Safe', kSafe),
+              ]),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: kCard,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.white.withOpacity(0.1)),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _sortMode,
+                dropdownColor: kSurface,
+                iconEnabledColor: kAccent,
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+                items: const [
+                  DropdownMenuItem(value: 'risk_desc',     child: Text('Risk ▼')),
+                  DropdownMenuItem(value: 'risk_asc',      child: Text('Risk ▲')),
+                  DropdownMenuItem(value: 'distance_desc', child: Text('Distance ▼')),
+                  DropdownMenuItem(value: 'id_asc',        child: Text('ID A→Z')),
+                ],
+                onChanged: (v) => setState(() => _sortMode = v ?? 'risk_desc'),
+              ),
+            ),
+          ),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _filterChip(String label, Color color) {
+    final selected = _filterFlag == label;
+    return GestureDetector(
+      onTap: () => setState(() => _filterFlag = label),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? color.withOpacity(0.2) : kCard,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: selected ? color : Colors.white.withOpacity(0.1)),
+        ),
+        child: Text(label, style: TextStyle(
+          fontSize: 12,
+          color: selected ? color : Colors.white.withOpacity(0.4),
+          fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+        )),
+      ),
     );
   }
  
@@ -727,11 +1424,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.35)),
           ),
         ])),
-        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Text("${s['confidence'] ?? 'N/A'}%",
-              style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.4))),
-          Text("confidence", style: TextStyle(fontSize: 9, color: Colors.white.withOpacity(0.25))),
-        ]),
+        _buildPredictionBadge(s['shipment_id'] as String? ?? ''),
       ]),
     );
   }
@@ -776,7 +1469,7 @@ class _RouteDetailSheetState extends State<RouteDetailSheet> {
     setState(() => _loadingRoute = true);
     try {
       final res = await widget.dio.post(
-        "${widget.baseUrl}/route/optimize",
+        "/route/optimize",
         queryParameters: {
           "shipment_id": widget.alert['shipment_id'],
           "origin":      widget.alert['origin'] ?? widget.alert['route']?.toString().split(' → ')[0],
@@ -789,15 +1482,7 @@ class _RouteDetailSheetState extends State<RouteDetailSheet> {
     }
   }
  
-  void _openGoogleMaps(double oLat, double oLon, double dLat, double dLon) async {
-    final url = "https://www.google.com/maps/dir/?api=1"
-        "&origin=$oLat,$oLon"
-        "&destination=$dLat,$dLon"
-        "&travelmode=driving";
-    if (await canLaunchUrl(Uri.parse(url))) {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-    }
-  }
+
  
   @override
   Widget build(BuildContext context) {
@@ -904,30 +1589,33 @@ class _RouteDetailSheetState extends State<RouteDetailSheet> {
                 ])),
  
             const SizedBox(height: 20),
- 
-            // Open in Google Maps button
-            GestureDetector(
-              onTap: () => _openGoogleMaps(
-                (alert['origin_lat'] ?? 0).toDouble(),
-                (alert['origin_lon'] ?? 0).toDouble(),
-                (alert['dest_lat']   ?? 0).toDouble(),
-                (alert['dest_lon']   ?? 0).toDouble(),
-              ),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: [kAccent, Color(0xFF00A884)]),
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [BoxShadow(color: kAccent.withOpacity(0.3), blurRadius: 15, spreadRadius: 1)],
+
+            // View optimized routes on map
+            if (_routeData != null)
+              GestureDetector(
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => MapScreen(
+                    routeData:  Map<String, dynamic>.from(_routeData!),
+                    shipmentId: alert['shipment_id'] as String? ?? '',
+                    routeLabel: alert['route']       as String? ?? '',
+                  ),
+                )),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  decoration: BoxDecoration(
+                    color: kCard,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: kAccent.withOpacity(0.4)),
+                  ),
+                  child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(Icons.route_rounded, color: kAccent, size: 20),
+                    SizedBox(width: 10),
+                    Text("View Optimized Routes Map",
+                        style: TextStyle(color: kAccent, fontWeight: FontWeight.bold, fontSize: 14)),
+                  ]),
                 ),
-                child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(Icons.map_rounded, color: kPrimary),
-                  SizedBox(width: 10),
-                  Text("View Route in Google Maps",
-                      style: TextStyle(color: kPrimary, fontWeight: FontWeight.bold, fontSize: 15)),
-                ]),
               ),
-            ),
+
           ])),
         ]),
       ),
