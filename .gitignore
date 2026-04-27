@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Trained model artifacts (regenerate with model-training/model_train.py)
+Backend/*.pkl
+
+# Flutter build output
+frontend/build/
+frontend/.dart_tool/
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
+frontend/.packages
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# NOTE: .env is intentionally NOT ignored — it contains API keys needed to run
+# the project. Do not use this repository for production deployments.
