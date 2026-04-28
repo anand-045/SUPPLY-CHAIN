@@ -5,6 +5,8 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import LabelEncoder
 import pickle, os
 
+_MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "risk_model.pkl")
+
 # ── Training data ──────────────────────────────
 # Each row: [weather_severity, distance_km, cargo_priority, hour_of_day]
 # Label: 0=Safe, 1=Warning, 2=Critical
@@ -54,7 +56,7 @@ def train_model():
     model.fit(X, y)
 
     # Save model to disk
-    with open("risk_model.pkl", "wb") as f:
+    with open(_MODEL_PATH, "wb") as f:
         pickle.dump(model, f)
 
     print("Model trained and saved.")
@@ -62,8 +64,8 @@ def train_model():
 
 def load_model():
     """Load saved model, or train a new one if not found."""
-    if os.path.exists("risk_model.pkl"):
-        with open("risk_model.pkl", "rb") as f:
+    if os.path.exists(_MODEL_PATH):
+        with open(_MODEL_PATH, "rb") as f:
             return pickle.load(f)
     return train_model()
 
