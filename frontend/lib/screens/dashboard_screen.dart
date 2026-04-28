@@ -10,11 +10,16 @@ import 'map_screen.dart';
 // CONSTANTS
 // ─────────────────────────────────────────────
 String getBaseUrl() {
-  // Android emulator routes 127.0.0.1 to itself; host machine is at 10.0.2.2
+  // If you want to use the deployed cloud backend:
+  return "https://supply-chain-7onq.onrender.com";
+
+  /* // Keep this commented out unless you are running the backend 
+  // locally on your laptop right now:
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
     return "http://10.0.2.2:8000";
   }
   return "http://127.0.0.1:8000";
+  */
 }
 
 const String kBaseUrl = "http://127.0.0.1:8000";
