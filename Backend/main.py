@@ -15,7 +15,13 @@ from online_learner import OnlineLearner, heuristic_predict, build_feature_vecto
 load_dotenv()
 
 app = FastAPI()
-
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # This allows EVERY domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # 👇 ADD HERE
 @app.get("/")
