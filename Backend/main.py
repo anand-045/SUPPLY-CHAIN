@@ -9,11 +9,21 @@ from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import joblib
-from fastapi.middleware.cors import CORSMiddleware
 
+from online_learner import OnlineLearner, heuristic_predict, build_feature_vector
+
+load_dotenv()
+
+# CREATE APP FIRST
+app = FastAPI()
+
+# ADD CORS AFTER APP CREATED
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://supply-chain-7onq.onrender.com"],
+    allow_origins=[
+        "https://supply-chain-7onq.onrender.com"
+    ],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -126,13 +136,7 @@ def _load_ml_artifacts():
         import threading
         threading.Thread(target=_warm_start_sync, daemon=True).start()
  
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+
  
 WEATHER_API_KEY           = os.getenv("WEATHER_API_KEY")           or "56bb9e0d4a6867bbe5d4eeb3f71cf4a0"
 OPENROUTE_API_KEY         = os.getenv("OPENROUTE_API_KEY")         or "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6Ijc4YTNhYmJmNTgyNjQyNjhiMWY4ZDFlZjVhZDNlYjIxIiwiaCI6Im11cm11cjY0In0="
