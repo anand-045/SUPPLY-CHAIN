@@ -12,7 +12,17 @@ venv/
 env/
 
 # Trained model artifacts (regenerate with model-training/model_train.py)
-Backend/*.pkl
+# risk_model.pkl is intentionally tracked — auto-regenerates at startup if missing
+Backend/model.pkl
+Backend/scaler.pkl
+Backend/encoders.pkl
+Backend/classifier.pkl
+Backend/classifier_scaler.pkl
+Backend/classifier_meta.pkl
+Backend/regressor.pkl
+Backend/online_model.pkl
+Backend/online_scaler.pkl
+Backend/online_meta.pkl
 
 # Flutter build output
 frontend/build/
