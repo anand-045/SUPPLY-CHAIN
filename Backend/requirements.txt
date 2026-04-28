@@ -8,3 +8,4 @@ python-dotenv
 joblib
 google-generativeai
 scikit-learn
+python-multipart
