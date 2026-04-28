@@ -16,6 +16,16 @@ load_dotenv()
 
 app = FastAPI()
 
+
+# 👇 ADD HERE
+@app.get("/")
+def home():
+    return {"status": "API running"}
+
+@app.get("/test")
+def test():
+    return {"msg": "working"}
+
 # ── Thread pool for blocking I/O ─────────────────
 _executor = ThreadPoolExecutor(max_workers=20)
 
@@ -1298,3 +1308,4 @@ def health():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
