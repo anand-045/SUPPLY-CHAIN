@@ -1,9 +1,9 @@
 fastapi
 uvicorn
-python-multipart
+gunicorn
 pandas
+numpy
 requests
 python-dotenv
-scikit-learn
-numpy
+joblib
 google-generativeai
