@@ -9,7 +9,15 @@ from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import joblib
+from fastapi.middleware.cors import CORSMiddleware
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 from online_learner import OnlineLearner, heuristic_predict, build_feature_vector
 
 load_dotenv()
